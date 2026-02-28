@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BOMIS Purnia - ICT Tracker</title>
+    <style>
+        :root { --primary: #004a99; --secondary: #f4f4f4; --success: #28a745; --danger: #dc3545; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: var(--secondary); }
+        header { background: var(--primary); color: white; padding: 1rem; text-align: center; position: relative; }
+        .container { padding: 15px; max-width: 1200px; margin: auto; }
+        
+        /* Login Screen */
+        #login-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--primary); color: white;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 9999;
+        }
+        .login-box { background: white; padding: 30px; border-radius: 10px; color: #333; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        #app-content { display: none; }
+        
+        /* Table & Controls */
+        .grade-nav { display: flex; overflow-x: auto; gap: 10px; padding: 10px 0; margin-bottom: 20px; }
+        button { padding: 8px 15px; border-radius: 5px; cursor: pointer; background: white; color: var(--primary); border: 1px solid var(--primary); transition: 0.3s; }
+        button.active { background: var(--primary); color: white; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; min-width: 90px; }
+        .student-name { text-align: left; position: sticky; left: 0; background: white; font-weight: bold; min-width: 150px; border-right: 2px solid #eee; }
+        .controls { display: flex; gap: 10px; margin-bottom: 15px; }
+        input { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+        .btn-add { background: var(--success); color: white; border: none; }
+        .btn-del { background: var(--danger); color: white; border: none; font-size: 11px; padding: 2px 6px; }
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div class="login-box">
+        <h2>ICT Teacher Portal</h2>
+        <p>BOMIS Purnia</p>
+        <input type="password" id="passInput" placeholder="Password" style="width:200px;"><br><br>
+        <button class="btn-add" onclick="checkPassword()" style="width:220px; height:40px;">Login</button>
+    </div>
+</div>
+
+<div id="app-content">
+    <header>
+        <h1>BOMIS Purnia ICT Tracker</h1>
+        <button onclick="logout()" style="position:absolute; right:15px; top:20px;">Logout</button>
+    </header>
+
+    <div class="container">
+        <div class="grade-nav" id="gradeNav"></div>
+
+        <div class="card">
+            <h2 id="currentGradeTitle">Grade 3</h2>
+            <div class="controls">
+                <input type="text" id="chapterInput" placeholder="Add Chapter Name..." style="flex-grow:1;">
+                <button class="btn-add" onclick="addChapter()">+ Add Chapter</button>
+            </div>
+            
+            <div id="tableContainer"></div>
+
+            <div class="controls" style="margin-top:25px; border-top:1px solid #eee; padding-top:20px;">
+                <input type="text" id="studentInput" placeholder="Add Student Name..." style="flex-grow:1;">
+                <button class="btn-add" onclick="addStudent()">+ Add Student</button>
+            </div>
+        </div>
+
+        <button onclick="downloadReport()" style="width:100%; background:#333; color:white; padding:15px; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">Generate CSV Report</button>
+    </div>
+</div>
+
+<script>
+    const PASS = "BOMIS2026"; // Change your password here
+
+    // 1. Password & Session Logic
+    function checkPassword() {
+        const input = document.getElementById('passInput').value;
+        if (input === PASS) {
+            const expiry = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 Hours
+            localStorage.setItem('bomis_session', expiry);
+            unlockApp();
+        } else {
+            alert("Incorrect password.");
+        }
+    }
+
+    function unlockApp() {
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('app-content').style.display = 'block';
+        render();
+    }
+
+    window.onload = () => {
+        const session = localStorage.getItem('bomis_session');
+        if (session && new Date().getTime() < session) {
+            unlockApp();
+        }
+    };
+
+    function logout() {
+        localStorage.removeItem('bomis_session');
+        location.reload();
+    }
+
+    // 2. App Logic
+    let db = JSON.parse(localStorage.getItem('bomis_ict_db')) || {
+        currentGrade: 'Grade 3',
+        grades: { 'Grade 3': { students: [], chapters: [] }, 'Grade 4': { students: [], chapters: [] }, 'Grade 5': { students: [], chapters: [] }, 'Grade 6': { students: [], chapters: [] }, 'Grade 7': { students: [], chapters: [] }, 'Grade 8': { students: [], chapters: [] } }
+    };
+
+    function saveData() { localStorage.setItem('bomis_ict_db', JSON.stringify(db)); render(); }
+
+    function render() {
+        const nav = document.getElementById('gradeNav');
+        nav.innerHTML = Object.keys(db.grades).map(g => `<button class="${db.currentGrade === g ? 'active' : ''}" onclick="switchGrade('${g}')">${g}</button>`).join('');
+        document.getElementById('currentGradeTitle').innerText = db.currentGrade;
+        
+        const data = db.grades[db.currentGrade];
+        let html = `<table><tr><th class="student-name">Student</th>`;
+        data.chapters.forEach((ch, i) => {
+            html += `<th>${ch}<br><button class="btn-del" onclick="deleteChapter(${i})">Del</button><br><small>CW | HW</small></th>`;
+        });
+        html += `<th>Action</th></tr>`;
+
+        data.students.forEach((stu, sIdx) => {
+            html += `<tr><td class="student-name">${stu.name}</td>`;
+            data.chapters.forEach((ch) => {
+                html += `<td>
+                    <input type="checkbox" ${stu.progress[ch]?.cw ? 'checked' : ''} onchange="toggleTask(${sIdx}, '${ch}', 'cw')">
+                    <input type="checkbox" ${stu.progress[ch]?.hw ? 'checked' : ''} onchange="toggleTask(${sIdx}, '${ch}', 'hw')">
+                </td>`;
+            });
+            html += `<td><button class="btn-del" onclick="deleteStudent(${sIdx})">Remove</button></td></tr>`;
+        });
+        html += `</table>`;
+        document.getElementById('tableContainer').innerHTML = data.chapters.length || data.students.length ? html : "<p style='text-align:center;color:#666;'>Start by adding chapters and students above.</p>";
+    }
+
+    function switchGrade(g) { db.currentGrade = g; render(); }
+    function addChapter() {
+        const val = document.getElementById('chapterInput').value;
+        if(val) { db.grades[db.currentGrade].chapters.push(val); document.getElementById('chapterInput').value = ''; saveData(); }
+    }
+    function deleteChapter(idx) { if(confirm("Delete this chapter?")) { db.grades[db.currentGrade].chapters.splice(idx, 1); saveData(); } }
+    function addStudent() {
+        const val = document.getElementById('studentInput').value;
+        if(val) { db.grades[db.currentGrade].students.push({ name: val, progress: {} }); document.getElementById('studentInput').value = ''; saveData(); }
+    }
+    function deleteStudent(idx) { if(confirm("Remove student?")) { db.grades[db.currentGrade].students.splice(idx, 1); saveData(); } }
+    function toggleTask(sIdx, ch, type) {
+        const stu = db.grades[db.currentGrade].students[sIdx];
+        if(!stu.progress[ch]) stu.progress[ch] = { cw: false, hw: false };
+        stu.progress[ch][type] = !stu.progress[ch][type];
+        saveData();
+    }
+
+    function downloadReport() {
+        const data = db.grades[db.currentGrade];
+        if(!data.students.length) return alert("No students to export!");
+        let csv = "Student," + data.chapters.map(ch => `${ch} CW,${ch} HW`).join(",") + "\n";
+        data.students.forEach(stu => {
+            csv += stu.name + "," + data.chapters.map(ch => `${stu.progress[ch]?.cw ? 'YES' : 'NO'},${stu.progress[ch]?.hw ? 'YES' : 'NO'}`).join(",") + "\n";
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = window.URL.createObjectURL(blob);
+        a.download = `${db.currentGrade}_ICT_Status.csv`;
+        a.click();
+    }
+</script>
+</body>
+</html>
