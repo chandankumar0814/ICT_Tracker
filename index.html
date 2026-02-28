@@ -145,7 +145,40 @@
     }
 
     // --- CORE APP LOGIC ---
-    function saveData() { localStorage.setItem('bomis_ict_db', JSON.stringify(db)); render(); }
+    // --- AUTO-SYNC LOGIC ---
+let syncTimer;
+
+function saveData() { 
+    // 1. Save to the browser memory immediately so you don't lose data
+    localStorage.setItem('bomis_ict_db', JSON.stringify(db)); 
+    render(); 
+
+    // 2. Set a 2-second delay before pushing to Google Sheets
+    // This prevents the app from crashing if you click 10 boxes quickly
+    document.getElementById('status').innerText = "Waiting to sync...";
+    clearTimeout(syncTimer);
+    
+    syncTimer = setTimeout(() => {
+        syncWithCloud();
+    }, 2000); 
+}
+
+// Ensure your syncWithCloud function looks like this:
+async function syncWithCloud() {
+    if (!CLOUD_URL || CLOUD_URL.includes("PASTE_YOUR")) return;
+    
+    document.getElementById('status').innerText = "Syncing...";
+    try {
+        await fetch(CLOUD_URL, { 
+            method: 'POST', 
+            mode: 'no-cors', 
+            body: JSON.stringify(db) 
+        });
+        document.getElementById('status').innerText = "Cloud Synced ✅";
+    } catch (e) { 
+        document.getElementById('status').innerText = "Sync Failed ❌"; 
+    }
+}
 
     function render() {
         const nav = document.getElementById('gradeNav');
@@ -222,5 +255,6 @@
 </script>
 </body>
 </html>
+
 
 
