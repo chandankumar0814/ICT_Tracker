@@ -1,0 +1,21 @@
+{
+  "short_name": "ICT Tracker",
+  "name": "BOMIS Purnia ICT Tracker",
+  "icons": [
+    {
+      "src": "logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#E67E22",
+  "theme_color": "#004a99"
+}
