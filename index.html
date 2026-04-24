@@ -17,33 +17,33 @@
         header { background: var(--primary); color: white; padding: 1rem; text-align: center; position: relative; }
         .container { padding: 15px; max-width: 1200px; margin: auto; }
         
-        /* Login & Overlays */
         #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; z-index: 9999; }
         .login-box { background: white; padding: 30px; border-radius: 10px; color: #333; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
         #app-content { display: none; }
 
-        /* Sync Status Bar */
         .sync-bar { background: #fff; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; font-size: 0.9rem; }
         
-        /* Navigation & Cards */
         .grade-nav { display: flex; overflow-x: auto; gap: 8px; padding: 15px 0; }
         button { padding: 8px 15px; border-radius: 5px; cursor: pointer; border: 1px solid var(--primary); background: white; color: var(--primary); }
         button.active { background: var(--primary); color: white; }
         .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
 
-        /* Table Styling */
         .table-wrapper { overflow-x: auto; margin-top: 15px; border-radius: 8px; border: 1px solid #eee; }
         table { width: 100%; border-collapse: collapse; background: white; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: center; min-width: 80px; }
         th { background: #f8f9fa; font-size: 0.85rem; }
         .student-name { position: sticky; left: 0; background: white; font-weight: bold; min-width: 160px; text-align: left; border-right: 2px solid #004a99; }
         
-        /* Utility Buttons */
         .btn-add { background: var(--success); color: white; border: none; }
         .btn-del { background: var(--danger); color: white; border: none; font-size: 10px; padding: 3px 6px; }
         .btn-cloud { background: var(--warning); color: white; border: none; font-weight: bold; }
         .controls { display: flex; gap: 10px; margin: 15px 0; flex-wrap: wrap; }
         input[type="text"], input[type="password"] { padding: 10px; border: 1px solid #ccc; border-radius: 5px; }
+
+        /* Added specific styles for the new inputs */
+        .marks-input { width: 40px; padding: 2px; font-size: 11px; border: 1px solid #ccc; border-radius: 3px; margin-top: 4px; }
+        .cell-container { display: flex; flex-direction: column; align-items: center; }
+        .check-group { display: flex; gap: 4px; }
     </style>
 </head>
 <body>
@@ -100,7 +100,8 @@
         grades: { 'Grade 3': { students: [], chapters: [] }, 'Grade 4': { students: [], chapters: [] }, 'Grade 5': { students: [], chapters: [] }, 'Grade 6': { students: [], chapters: [] }, 'Grade 7': { students: [], chapters: [] }, 'Grade 8': { students: [], chapters: [] } }
     };
 
-    // --- AUTH LOGIC ---
+    let syncTimer;
+
     function checkPassword() {
         if (document.getElementById('passInput').value === PASS) {
             const expiry = new Date().getTime() + (24 * 60 * 60 * 1000);
@@ -112,7 +113,7 @@
     function unlockApp() {
         document.getElementById('login-overlay').style.display = 'none';
         document.getElementById('app-content').style.display = 'block';
-        loadFromCloud(); // Try fetching latest cloud data on login
+        loadFromCloud();
         render();
     }
 
@@ -123,9 +124,21 @@
         if (session && new Date().getTime() < session) unlockApp();
     };
 
-    // --- CLOUD LOGIC ---
+    function saveData() { 
+        localStorage.setItem('bomis_ict_db', JSON.stringify(db)); 
+        render(); 
+
+        document.getElementById('status').innerText = "Waiting to sync...";
+        clearTimeout(syncTimer);
+        
+        syncTimer = setTimeout(() => {
+            syncWithCloud();
+        }, 2000); 
+    }
+
     async function syncWithCloud() {
-        document.getElementById('status').innerText = "Pushing to Cloud...";
+        if (!CLOUD_URL || CLOUD_URL.includes("PASTE_YOUR")) return;
+        document.getElementById('status').innerText = "Syncing...";
         try {
             await fetch(CLOUD_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(db) });
             document.getElementById('status').innerText = "Cloud Synced ✅";
@@ -144,42 +157,6 @@
         } catch (e) { console.log("Cloud unavailable"); }
     }
 
-    // --- CORE APP LOGIC ---
-    // --- AUTO-SYNC LOGIC ---
-let syncTimer;
-
-function saveData() { 
-    // 1. Save to the browser memory immediately so you don't lose data
-    localStorage.setItem('bomis_ict_db', JSON.stringify(db)); 
-    render(); 
-
-    // 2. Set a 2-second delay before pushing to Google Sheets
-    // This prevents the app from crashing if you click 10 boxes quickly
-    document.getElementById('status').innerText = "Waiting to sync...";
-    clearTimeout(syncTimer);
-    
-    syncTimer = setTimeout(() => {
-        syncWithCloud();
-    }, 2000); 
-}
-
-// Ensure your syncWithCloud function looks like this:
-async function syncWithCloud() {
-    if (!CLOUD_URL || CLOUD_URL.includes("PASTE_YOUR")) return;
-    
-    document.getElementById('status').innerText = "Syncing...";
-    try {
-        await fetch(CLOUD_URL, { 
-            method: 'POST', 
-            mode: 'no-cors', 
-            body: JSON.stringify(db) 
-        });
-        document.getElementById('status').innerText = "Cloud Synced ✅";
-    } catch (e) { 
-        document.getElementById('status').innerText = "Sync Failed ❌"; 
-    }
-}
-
     function render() {
         const nav = document.getElementById('gradeNav');
         nav.innerHTML = Object.keys(db.grades).map(g => `<button class="${db.currentGrade === g ? 'active' : ''}" onclick="switchGrade('${g}')">${g}</button>`).join('');
@@ -188,22 +165,45 @@ async function syncWithCloud() {
         const data = db.grades[db.currentGrade];
         let html = `<table><tr><th class="student-name">Student Name</th>`;
         data.chapters.forEach((ch, i) => {
-            html += `<th>${ch}<br><button class="btn-del" onclick="deleteChapter(${i})">x</button><br><small>CW | HW</small></th>`;
+            // Header updated with BK label
+            html += `<th>${ch}<br><button class="btn-del" onclick="deleteChapter(${i})">x</button><br><small>CW | HW | BK</small></th>`;
         });
         html += `<th>Action</th></tr>`;
 
         data.students.forEach((stu, sIdx) => {
             html += `<tr><td class="student-name">${stu.name}</td>`;
             data.chapters.forEach((ch) => {
+                const p = stu.progress[ch] || { cw: false, hw: false, bk: false, marks: '' };
                 html += `<td>
-                    <input type="checkbox" ${stu.progress[ch]?.cw ? 'checked' : ''} onchange="toggleTask(${sIdx}, '${ch}', 'cw')">
-                    <input type="checkbox" ${stu.progress[ch]?.hw ? 'checked' : ''} onchange="toggleTask(${sIdx}, '${ch}', 'hw')">
+                    <div class="cell-container">
+                        <div class="check-group">
+                            <input type="checkbox" ${p.cw ? 'checked' : ''} onchange="toggleTask(${sIdx}, '${ch}', 'cw')">
+                            <input type="checkbox" ${p.hw ? 'checked' : ''} onchange="toggleTask(${sIdx}, '${ch}', 'hw')">
+                            <input type="checkbox" ${p.bk ? 'checked' : ''} onchange="toggleTask(${sIdx}, '${ch}', 'bk')">
+                        </div>
+                        <input type="number" class="marks-input" placeholder="Mks" value="${p.marks || ''}" onchange="updateMarks(${sIdx}, '${ch}', this.value)">
+                    </div>
                 </td>`;
             });
             html += `<td><button class="btn-del" onclick="deleteStudent(${sIdx})">Del</button></td></tr>`;
         });
         html += `</table>`;
         document.getElementById('tableContainer').innerHTML = html;
+    }
+
+    function toggleTask(sIdx, ch, type) {
+        const stu = db.grades[db.currentGrade].students[sIdx];
+        if(!stu.progress[ch]) stu.progress[ch] = { cw: false, hw: false, bk: false, marks: '' };
+        stu.progress[ch][type] = !stu.progress[ch][type];
+        saveData();
+    }
+
+    // New logic for saving Marks
+    function updateMarks(sIdx, ch, val) {
+        const stu = db.grades[db.currentGrade].students[sIdx];
+        if(!stu.progress[ch]) stu.progress[ch] = { cw: false, hw: false, bk: false, marks: '' };
+        stu.progress[ch].marks = val;
+        saveData();
     }
 
     function switchGrade(g) { db.currentGrade = g; render(); }
@@ -217,15 +217,7 @@ async function syncWithCloud() {
         if(val) { db.grades[db.currentGrade].students.push({ name: val, progress: {} }); document.getElementById('studentInput').value = ''; saveData(); }
     }
     function deleteStudent(idx) { if(confirm("Remove Student?")) { db.grades[db.currentGrade].students.splice(idx, 1); saveData(); } }
-    
-    function toggleTask(sIdx, ch, type) {
-        const stu = db.grades[db.currentGrade].students[sIdx];
-        if(!stu.progress[ch]) stu.progress[ch] = { cw: false, hw: false };
-        stu.progress[ch][type] = !stu.progress[ch][type];
-        saveData();
-    }
 
-    // --- EXCEL & REPORTS ---
     function importExcel(input) {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -242,9 +234,12 @@ async function syncWithCloud() {
 
     function downloadReport() {
         const data = db.grades[db.currentGrade];
-        let csv = "Student," + data.chapters.map(ch => `${ch} CW,${ch} HW`).join(",") + "\n";
+        let csv = "Student," + data.chapters.map(ch => `${ch} CW,${ch} HW,${ch} BK,${ch} Marks`).join(",") + "\n";
         data.students.forEach(stu => {
-            csv += stu.name + "," + data.chapters.map(ch => `${stu.progress[ch]?.cw ? 'Y' : 'N'},${stu.progress[ch]?.hw ? 'Y' : 'N'}`).join(",") + "\n";
+            csv += stu.name + "," + data.chapters.map(ch => {
+                const p = stu.progress[ch] || {};
+                return `${p.cw ? 'Y' : 'N'},${p.hw ? 'Y' : 'N'},${p.bk ? 'Y' : 'N'},${p.marks || ''}`;
+            }).join(",") + "\n";
         });
         const blob = new Blob([csv], { type: 'text/csv' });
         const a = document.createElement('a');
@@ -255,6 +250,3 @@ async function syncWithCloud() {
 </script>
 </body>
 </html>
-
-
-
